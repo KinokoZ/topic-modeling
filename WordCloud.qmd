@@ -1,0 +1,111 @@
+---
+title: "task1"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(tidyverse)
+library(textcat)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(topicmodels)
+library(ldatuning)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+You can add options to executable code like this
+
+The `echo: false` option disables the printing of c
+
+```{r}
+movies<- read_csv("movie_plots_with_genres.csv")
+
+head(movies)
+```
+
+```{r}
+# 筛选英文电影
+english_indices <- which(textcat(movies$`Movie Name`) == "english")
+english_movies <- movies[english_indices, ]
+
+# 修整Genre列
+english_movies <- english_movies %>%
+  mutate(Genre = str_trim(Genre))
+
+# 显示前几行数据
+head(english_movies)
+
+```
+
+```{r}
+# 创建文本语料库
+corpus <- Corpus(VectorSource(english_movies$Plot))
+
+# 文本清洗步骤
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, stemDocument)
+
+```
+
+```{r}
+dtm <- DocumentTermMatrix(corpus)
+
+# 检查DTM的维度
+dim(dtm)
+```
+
+```{r}
+
+# 选择最佳主题数
+result <- FindTopicsNumber(
+  dtm,
+  topics = seq(2, 20, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 1234),
+  mc.cores = 1L,
+  verbose = TRUE
+)
+
+# 绘制Scree Plot
+FindTopicsNumber_plot(result)
+
+# 假设选择了5个主题
+k <- 5
+lda_model <- LDA(dtm, k = k, control = list(seed = 1234))
+
+```
+
+```{r}
+terms_matrix <- terms(lda_model, 10)
+
+
+topic_terms <- posterior(lda_model)$terms
+
+for (i in 1:k) {
+  # 获取每个主题的词及其概率
+  word_probs <- topic_terms[i, ]
+  top_words <- sort(word_probs, decreasing = TRUE)[1:10]
+  
+  # 绘制词云
+wordcloud(names(top_words), freq = top_words, max.words = 10,
+          colors = brewer.pal(8, "Dark2"), random.order = FALSE,
+          scale = c(3, 0.5), family = "serif")
+}
+
+```
